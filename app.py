@@ -53,7 +53,9 @@ if uploaded_file is not None:
     filtered = subset[subset["sku"].isin(skus)]
 
     agg_series = filtered.groupby("date")["value"].sum().sort_index()
-    st.line_chart(agg_series, height=250)
+    # Display raw history aggregated by month
+    monthly_series = agg_series.resample("M").sum()
+    st.line_chart(monthly_series, height=250)
 
     # 4) SIDEBAR SETTINGS
     st.sidebar.header("⚙️ Forecast settings")
