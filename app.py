@@ -75,7 +75,9 @@ if uploaded_file is not None:
 
     # 5) FORECAST BUTTON
     if st.button("🚀 Run forecast"):
-        ts = filtered["value"].asfreq("W").fillna(0)
+        # Collapse duplicate dates then resample to weekly frequency
+        series = filtered["value"].groupby(level=0).sum()
+        ts = series.resample("W").sum().fillna(0)
 
         # MODEL FIT & FORECAST
         if model_type == "Moving Average":
