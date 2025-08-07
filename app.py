@@ -188,11 +188,12 @@ if uploaded_file is not None:
             if d in forecast.index:
                 forecast.loc[d] *= 1 + r
 
-        # Round values
+                # Round values and ensure consistent column names
         forecast = forecast.round(0)
+        forecast.name = "forecast"  # guarantee consistent series name
 
         # ---- DISPLAY FORECAST ----
-        disp_df = forecast.reset_index().rename(columns={"index": "date", 0: "forecast"})
+        disp_df = forecast.reset_index()  # columns: date, forecast
         disp_df["date_str"] = disp_df["date"].dt.to_period("M").astype(str)
 
         chart = (
