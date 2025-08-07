@@ -161,11 +161,9 @@ if uploaded_file is not None:
                 )
                 st.stop()
             df_prophet = ts.reset_index().rename(columns={"date": "ds", "value": "y"})
-            m = Prophet(
-                yearly_seasonality=True,
-                monthly_seasonality=False,
-                weekly_seasonality=False,
-            )
+            m = Prophet(yearly_seasonality=True, weekly_seasonality=False, daily_seasonality=False)
+            # Optional: add custom monthly seasonality
+            m.add_seasonality(name="monthly", period=30.5, fourier_order=5)
             m.fit(df_prophet)
             future = m.make_future_dataframe(periods=horizon, freq="M")
             forecast_df = m.predict(future)
