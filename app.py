@@ -111,7 +111,19 @@ alpha = st.sidebar.slider("Alpha", 0.01, 1.0, 0.3) if model_type == "Exponential
 if model_type == "Holt-Winters Seasonal":
     season_len = st.sidebar.slider("Season length", 3, 24, 12)
     seasonality = st.sidebar.selectbox("Seasonality", ["add", "mul"], 0)
+    st.sidebar.caption(
+        "**add**: seasonal fluctuations have constant magnitude (e.g., +500 units).
+"
+        "**mul**: seasonal fluctuations scale with the level (e.g., +15 %)."
+    )
     trend = st.sidebar.selectbox("Trend", ["add", "mul", None], 0)
+    st.sidebar.caption(
+        "**add**: linear trend (constant increase/decrease per period).
+"
+        "**mul**: exponential trend (percentage growth/decay).
+"
+        "**None**: no long‑term trend component."
+    )
 else:
     season_len = seasonality = trend = None
 
