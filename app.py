@@ -139,18 +139,25 @@ with st.sidebar.form("event_form"):
     e_lift = st.number_input("Lift %", value=10.0)
     add_event = st.form_submit_button("Add / update")
 
-if "events" not in st.session_state:
-    st.session_state["events"] = {}
+if \"events\" not in st.session_state:
+    st.session_state[\"events\"] = {}
+
+# normalise old float-format events to dict
+for k, v in list(st.session_state[\"events\"].items()):
+    if isinstance(v, (int, float)):
+        st.session_state[\"events\"][k] = {\"name\": k.strftime(\"Event %Y-%m\"), \"lift\": float(v)}
+
+# alias
+events = st.session_state[\"events\"]
 
 if add_event:
     mth = (pd.to_datetime(e_date) + pd.offsets.MonthEnd(0)).normalize()
-    st.session_state["events"][mth] = {"name": e_name or mth.strftime("Event %Y-%m"), "lift": e_lift / 100}
+    events[mth] = {\"name\": e_name or mth.strftime(\"Event %Y-%m\"), \"lift\": e_lift / 100}
 
-# Display event list
-if st.session_state["events"]:
+if events:
     evt_df = pd.DataFrame([
-        {"Month": d.strftime("%Y-%m"), "Event": v["name"], "Lift %": int(v["lift"]*100)}
-        for d, v in sorted(st.session_state["events"].items())
+        {\"Month\": d.strftime(\"%Y-%m\"), \"Event\": v[\"name\"], \"Lift %\": int(v[\"lift\"]*100)}
+        for d, v in sorted(events.items())
     ])
     st.sidebar.table(evt_df)
 # ------------------------------------------------------------------
@@ -186,9 +193,9 @@ if st.button("🚀 Forecast"):
         forecast = m.predict(future).set_index("ds")["yhat"].iloc[-horizon:]
 
     # Apply lifts
-    for d, r in st.session_state["events"].items():
+    for d, v in events.items():
         if d in forecast.index:
-            forecast.loc[d] *= 1 + r
+            forecast.loc[d] *= 1 + v[\"lift\"]
 
     forecast = forecast.clip(lower=0).round(0)
     forecast.name = "forecast"
