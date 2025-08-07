@@ -3,6 +3,7 @@ import pandas as pd
 import altair as alt
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 
+# Prophet is optional (add `prophet` to requirements.txt if desired)
 try:
     from prophet import Prophet
 except ImportError:
@@ -11,7 +12,7 @@ except ImportError:
 st.set_page_config(page_title="Sales Forecast", layout="wide")
 st.title("📈 Sales Forecasting Tool – Monthly")
 
-# 1️⃣ Upload
+# 1️⃣ Upload -------------------------------------------------------------
 uploaded_file = st.file_uploader("Upload sales history Excel (.xlsx)", type=["xlsx"])
 
 if uploaded_file is not None:
@@ -23,7 +24,7 @@ if uploaded_file is not None:
 
     cols = raw.columns.tolist()
 
-    # 2️⃣ Layout selection
+    # 2️⃣ Layout selection ------------------------------------------------
     layout = st.radio(
         "How are your dates stored?",
         ["Rows – there is a date column", "Columns – each month is a separate column"],
@@ -59,7 +60,7 @@ if uploaded_file is not None:
     data["customer"] = data["customer"].astype(str)
     data["sku"] = data["sku"].astype(str)
 
-    # 3️⃣ Filters
+    # 3️⃣ Filters ---------------------------------------------------------
     st.markdown("### Choose customers / SKUs to forecast")
     cust_opts = sorted(data["customer"].unique())
     customers = st.multiselect("Customer(s)", cust_opts, default=cust_opts[:1])
@@ -73,7 +74,7 @@ if uploaded_file is not None:
         st.warning("No data for selected filters.")
         st.stop()
 
-    # 4️⃣ History chart
+    # 4️⃣ History chart ---------------------------------------------------
     monthly_hist = filtered.groupby("date")["value"].sum().sort_index().resample("M").sum()
     hist_df = monthly_hist.reset_index()
     hist_df["date_str"] = hist_df["date"].dt.to_period("M").astype(str)
@@ -85,7 +86,7 @@ if uploaded_file is not None:
         use_container_width=True,
     )
 
-    # 5️⃣ Forecast settings
+    # 5️⃣ Forecast settings ----------------------------------------------
     st.sidebar.header("⚙️ Forecast settings")
     horizon = st.sidebar.number_input("Forecast horizon (months)", 1, 36, 12)
     model_type = st.sidebar.selectbox(
@@ -93,20 +94,19 @@ if uploaded_file is not None:
         ["Moving Average", "Exponential Smoothing (no season)", "Holt-Winters Seasonal", "Prophet"],
     )
 
-    ma_window = alpha = season_len = seasonality = trend = None
-    if model_type == "Moving Average":
-        ma_window = st.sidebar.slider("MA window", 2, 24, 3)
-    elif model_type == "Exponential Smoothing (no season)":
-        alpha = st.sidebar.slider("Alpha", 0.01, 1.0, 0.3)
-    elif model_type == "Holt-Winters Seasonal":
+    ma_window = st.sidebar.slider("MA window", 2, 24, 3) if model_type == "Moving Average" else None
+    alpha = st.sidebar.slider("Alpha", 0.01, 1.0, 0.3) if model_type == "Exponential Smoothing (no season)" else None
+    if model_type == "Holt-Winters Seasonal":
         season_len = st.sidebar.slider("Season length", 3, 24, 12)
         seasonality = st.sidebar.selectbox("Seasonality", ["add", "mul"], 0)
         trend = st.sidebar.selectbox("Trend", ["add", "mul", None], 0)
+    else:
+        season_len = seasonality = trend = None
 
     if model_type == "Prophet" and Prophet is None:
         st.sidebar.error("Prophet not installed. Add `prophet` to requirements.txt and redeploy.")
 
-    # 6️⃣ Events
+    # 6️⃣ Events ----------------------------------------------------------
     st.sidebar.markdown("---")
     st.sidebar.subheader("Events / lifts")
     with st.sidebar.form("event_form"):
@@ -121,7 +121,7 @@ if uploaded_file is not None:
     if st.session_state["events"]:
         st.sidebar.write({d.strftime("%Y-%m"): f"+{int(r*100)}%" for d, r in st.session_state["events"].items()})
 
-    # 7️⃣ Run forecast
+    # 7️⃣ Run forecast ----------------------------------------------------
     if st.button("🚀 Forecast"):
         ts = filtered.groupby("date")["value"].sum().sort_index().resample("M").sum().fillna(0)
 
@@ -132,8 +132,7 @@ if uploaded_file is not None:
             forecast = pd.Series(last_ma, idx)
         elif model_type == "Exponential Smoothing (no season)":
             model = ExponentialSmoothing(ts, trend=None, seasonal=None, initialization_method="estimated")
-            fit = model.fit(smoothing_level=alpha, optimized=False)
-            forecast = fit.forecast(horizon)
+            forecast = model.fit(smoothing_level=alpha, optimized=False).forecast(horizon)
         elif model_type == "Holt-Winters Seasonal":
             if len(ts) < 2 * season_len:
                 st.error("Need at least two seasons of data.")
@@ -151,16 +150,27 @@ if uploaded_file is not None:
             future = m.make_future_dataframe(horizon, freq="M")
             forecast = m.predict(future).set_index("ds")["yhat"].iloc[-horizon:]
 
-        # --- Apply lifts ---
+        # --- Apply lifts & post-process ---
         for d, r in st.session_state["events"].items():
             if d in forecast.index:
                 forecast.loc[d] *= 1 + r
 
-        # --- Post‑process: clip negatives, round ---
         forecast = forecast.clip(lower=0).round(0)
         forecast.name = "forecast"
         forecast.index.name = "date"
 
-        # ---- DISPLAY FORECAST ----
+        # ---- Combined chart -------------------------------------------
         disp_df = forecast.reset_index()
         disp_df["date_str"] = disp_df["date"].dt.to_period("M").astype(str)
+
+        chart = (
+            alt.Chart(disp_df)
+            .mark_line(point=True, color="#ff7f0e")
+            .encode(x="date_str:N", y="forecast:Q", tooltip=["date_str", "forecast"])
+            + alt.Chart(disp_df)
+            .mark_text(dy=-12, color="#ff7f0e")
+            .encode(x="date_str:N", y="forecast:Q", text="forecast:Q")
+        ).properties(height=300)
+
+        st.subheader("🔮 Monthly Forecast")
+        st.altair_chart(chart, use_container_width
