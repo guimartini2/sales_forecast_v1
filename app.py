@@ -5,8 +5,7 @@ from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from datetime import timedelta
 
 st.set_page_config(page_title="Sales Forecast", layout="wide")
-
-st.title("📈 Sales Forecasting Tool")
+st.title("📈 Sales Forecasting Tool – Monthly")
 
 # 1) DATA UPLOAD
 uploaded_file = st.file_uploader("Upload sales history Excel (.xlsx)", type=["xlsx"])
@@ -31,34 +30,33 @@ if uploaded_file is not None:
     data.columns = ["date", "customer", "sku", "value"]
     data["date"] = pd.to_datetime(data["date"])
 
-    # 3) FILTERS
-    st.markdown("### 2️⃣ Choose customer & SKU to model")
-    customer = st.selectbox("Customer", sorted(data["customer"].unique()))
-    sku = st.selectbox(
-        "SKU", sorted(data.loc[data["customer"] == customer, "sku"].unique())
+    # 3) FILTERS & AGGREGATION LEVEL
+    st.markdown("### 2️⃣ Select customers / SKUs")
+    customers = st.multiselect("Customer(s)", sorted(data["customer"].unique()), default=list(data["customer"].unique())[:1])
+    subset = data[data["customer"].isin(customers)]
+
+    skus = st.multiselect("SKU(s)", sorted(subset["sku"].unique()), default=list(subset["sku"].unique())[:1])
+    filtered = subset[subset["sku"].isin(skus)]
+
+    agg_series = (
+        filtered.groupby("date")["value"].sum().sort_index()
     )
 
-    filtered = (
-        data[(data["customer"] == customer) & (data["sku"] == sku)]
-        .sort_values("date")
-        .set_index("date")
-    )
-
-    st.line_chart(filtered["value"], height=250)
+    st.line_chart(agg_series, height=250)
 
     # 4) SIDEBAR SETTINGS
     st.sidebar.header("⚙️ Forecast settings")
-    horizon = st.sidebar.number_input("Forecast horizon (weeks)", 1, 104, value=26)
+    horizon = st.sidebar.number_input("Forecast horizon (months)", 1, 36, value=12)
     model_type = st.sidebar.selectbox("Model", ["Moving Average", "Exponential Smoothing"])
     if model_type == "Moving Average":
-        ma_window = st.sidebar.slider("MA window (weeks)", 2, 52, value=4)
+        ma_window = st.sidebar.slider("MA window (months)", 2, 24, value=3)
     else:
         alpha = st.sidebar.slider("Smoothing alpha", 0.01, 1.0, value=0.3)
 
     st.sidebar.markdown("---")
-    st.sidebar.header("📅 Events / Lifts")
+    st.sidebar.header("📅 Events / Lifts (monthly)")
     with st.sidebar.form(key="event_form"):
-        event_date = st.date_input("Event date")
+        event_date = st.date_input("Event month")
         lift_pct = st.number_input("Lift % vs baseline", value=10.0, step=1.0)
         submitted = st.form_submit_button("Add / update event")
 
@@ -66,23 +64,23 @@ if uploaded_file is not None:
         st.session_state["events"] = {}
 
     if submitted:
-        st.session_state["events"][pd.to_datetime(event_date)] = lift_pct / 100.0
+        event_month = (pd.to_datetime(event_date) + pd.offsets.MonthEnd(0)).normalize()
+        st.session_state["events"][event_month] = lift_pct / 100.0
 
     if st.session_state["events"]:
         st.sidebar.write(
-            {d.strftime("%Y-%m-%d"): f"+{int(r*100)}%" for d, r in st.session_state["events"].items()}
+            {d.strftime("%Y-%m"): f"+{int(r*100)}%" for d, r in st.session_state["events"].items()}
         )
 
     # 5) FORECAST BUTTON
     if st.button("🚀 Run forecast"):
-        # Collapse duplicate dates then resample to weekly frequency
-        series = filtered["value"].groupby(level=0).sum()
-        ts = series.resample("W").sum().fillna(0)
+        # Aggregate to monthly frequency
+        ts = agg_series.resample("M").sum().fillna(0)
 
         # MODEL FIT & FORECAST
         if model_type == "Moving Average":
             last_ma = ts.rolling(window=ma_window).mean().iloc[-1]
-            future_idx = pd.date_range(ts.index[-1] + timedelta(weeks=1), periods=horizon, freq="W")
+            future_idx = pd.date_range(ts.index[-1] + pd.offsets.MonthEnd(1), periods=horizon, freq="M")
             forecast = pd.Series(last_ma, index=future_idx)
         else:
             model = ExponentialSmoothing(ts, trend="add", seasonal=None, initialization_method="estimated")
@@ -94,7 +92,7 @@ if uploaded_file is not None:
             if d in forecast.index:
                 forecast.loc[d] = forecast.loc[d] * (1 + r)
 
-        st.subheader("🔮 Forecast")
+        st.subheader("🔮 Monthly Forecast")
         st.line_chart(forecast, height=250)
 
         result = forecast.reset_index().rename(columns={"index": "date", 0: "forecast"})
@@ -113,6 +111,4 @@ else:
     st.info("👆 Upload an Excel file to begin.")
 
 # 6) FOOTER
-st.markdown(
-    "---\nMade with ❤️ & Streamlit.  |  Adjust the model, add events, and tweak lift ratios; results update instantly."
-)
+st.markdown("---\nMade with ❤️ & Streamlit. | Monthly forecasts with optional customer/SKU aggregation.")
