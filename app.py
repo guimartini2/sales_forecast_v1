@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import altair as alt
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 
 try:
@@ -29,35 +30,25 @@ if uploaded_file is not None:
     )
 
     if layout == "Rows – there is a date column":
-        # Simple mapping
         st.markdown("### Map columns")
         date_col = st.selectbox("Date column", cols, index=0)
         customer_col = st.selectbox("Customer column", cols, index=1)
         sku_col = st.selectbox("SKU column", cols, index=2)
         value_col = st.selectbox("Sales value column", cols, index=3)
-
         data = raw[[date_col, customer_col, sku_col, value_col]].copy()
         data.columns = ["date", "customer", "sku", "value"]
-
-    else:  # columns layout
-        st.markdown("### Identify your identifier columns (everything else will be treated as month columns)")
-        id_cols = st.multiselect(
-            "Identifier columns (e.g. customer, SKU)",
-            cols,
-            default=[cols[0]],
-        )
+    else:
+        st.markdown("### Identify identifier columns (everything else are month columns)")
+        id_cols = st.multiselect("Identifier columns", cols, default=[cols[0]])
         month_cols = [c for c in cols if c not in id_cols]
         month_cols = st.multiselect("Month columns", month_cols, default=month_cols)
-
         long = raw[id_cols + month_cols].melt(id_vars=id_cols, var_name="date", value_name="value")
         long["date"] = pd.to_datetime(long["date"], errors="coerce", infer_datetime_format=True)
         if long["date"].isna().any():
-            st.error("Some month headers couldn’t be parsed. Rename like '2024-01'.")
-            st.stop()
-
+            st.error("Some month headers couldn’t be parsed. Rename like '2024-01'."); st.stop()
         st.markdown("### Map identifier columns")
-        customer_col = st.selectbox("Customer column", id_cols, index=0)
-        sku_col = st.selectbox("SKU column", id_cols, index=1 if len(id_cols)>1 else 0)
+        customer_col = st.selectbox("Customer column", id_cols, 0)
+        sku_col = st.selectbox("SKU column", id_cols, 1 if len(id_cols)>1 else 0)
         data = long[["date", customer_col, sku_col, "value"]].copy()
         data.columns = ["date", "customer", "sku", "value"]
 
@@ -68,34 +59,35 @@ if uploaded_file is not None:
 
     # 3️⃣ Filters
     st.markdown("### Choose customers / SKUs to forecast")
-    customer_options = sorted(data["customer"].unique())
-    customers_default = customer_options[:1] if customer_options else []
-    customers = st.multiselect("Customer(s)", customer_options, default=customers_default)
+    cust_opts = sorted(data["customer"].unique())
+    customers = st.multiselect("Customer(s)", cust_opts, default=cust_opts[:1])
     subset = data[data["customer"].isin(customers)] if customers else data.copy()
 
-    sku_options = sorted(subset["sku"].unique())
-    sku_default = sku_options[:1] if sku_options else []
-    skus = st.multiselect("SKU(s)", sku_options, default=sku_default)
+    sku_opts = sorted(subset["sku"].unique())
+    skus = st.multiselect("SKU(s)", sku_opts, default=sku_opts[:1])
     filtered = subset[subset["sku"].isin(skus)] if skus else subset.copy()
 
     if filtered.empty:
-        st.warning("No data for selected filters.")
-        st.stop()
+        st.warning("No data for selected filters."); st.stop()
 
-    # 4️⃣ Display history aggregated monthly
+    # 4️⃣ Monthly history chart
     monthly_hist = filtered.groupby("date")["value"].sum().sort_index().resample("M").sum()
-    st.line_chart(monthly_hist.rename(lambda x: x.strftime("%Y-%m")), height=250)
+    hist_df = monthly_hist.reset_index()
+    hist_df["date_str"] = hist_df["date"].dt.to_period("M").astype(str)
+    hist_chart = alt.Chart(hist_df).mark_line(point=True).encode(
+        x=alt.X("date_str:N", title="Month"),
+        y=alt.Y("value:Q", title="Sales"),
+        tooltip=["date_str", "value"]
+    ).properties(height=250)
+    st.altair_chart(hist_chart, use_container_width=True)
 
     # 5️⃣ Forecast settings
     st.sidebar.header("⚙️ Forecast settings")
     horizon = st.sidebar.number_input("Forecast horizon (months)", 1, 36, 12)
+    model_type = st.sidebar.selectbox("Model", [
+        "Moving Average", "Exponential Smoothing (no season)", "Holt-Winters Seasonal", "Prophet"
+    ])
 
-    model_type = st.sidebar.selectbox(
-        "Model",
-        ["Moving Average", "Exponential Smoothing (no season)", "Holt-Winters Seasonal", "Prophet"],
-    )
-
-    # Model‑specific widgets
     ma_window = alpha = season_len = seasonality = trend = None
     if model_type == "Moving Average":
         ma_window = st.sidebar.slider("MA window", 2, 24, 3)
@@ -141,7 +133,7 @@ if uploaded_file is not None:
                 st.error("Need at least two seasons of data."); st.stop()
             model = ExponentialSmoothing(ts, trend=trend, seasonal=seasonality, seasonal_periods=season_len, initialization_method="estimated")
             forecast = model.fit().forecast(horizon)
-        else:  # Prophet
+        else:
             if Prophet is None:
                 st.error("Prophet not installed"); st.stop()
             dfp = ts.reset_index().rename(columns={"date":"ds","value":"y"})
@@ -156,14 +148,25 @@ if uploaded_file is not None:
             if d in forecast.index:
                 forecast.loc[d] *= (1+r)
 
-        # Display
-        disp = forecast.copy(); disp.index = disp.index.to_period("M").astype(str)
-        st.line_chart(disp, height=250)
+        # Round values
+        forecast = forecast.round(0)
+
+        # Display forecast
+        disp_df = forecast.reset_index()
+        disp_df["date_str"] = disp_df["date"].dt.to_period("M").astype(str)
+        disp_chart = alt.Chart(disp_df).mark_line(point=True).encode(
+            x=alt.X("date_str:N", title="Month"),
+            y=alt.Y("forecast:Q", title="Forecast"),
+            tooltip=["date_str", "forecast"]
+        ) + alt.Chart(disp_df).mark_text(dy=-12).encode(
+            x="date_str:N",
+            y="forecast:Q",
+            text="forecast:Q"
+        )
+        st.altair_chart(disp_chart.properties(height=300), use_container_width=True)
 
         # Download
-        csv = forecast.reset_index().rename(columns={"index":"date",0:"forecast"}).to_csv(index=False).encode()
+        csv = disp_df[["date", "forecast"]].to_csv(index=False).encode()
         st.download_button("Download CSV", csv, "forecast.csv", "text/csv")
 else:
-    st.info("👆 Upload an Excel file to begin.")
-
-st.markdown("---\nMade with ❤️ & Streamlit. | Monthly forecasts with flexible layout support.")
+    st.info("
