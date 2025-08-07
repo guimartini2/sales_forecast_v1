@@ -163,4 +163,4 @@ if uploaded_file is not None:
 
         # ---- DISPLAY FORECAST ----
         disp_df = forecast.reset_index()
-        disp_df["date_str"] = disp
+        disp_df["date_str"] = disp_df["date"].dt.to_period("M").astype(str)
