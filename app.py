@@ -12,12 +12,16 @@ st.title("📈 Sales Forecasting Tool")
 uploaded_file = st.file_uploader("Upload sales history Excel (.xlsx)", type=["xlsx"])
 
 if uploaded_file is not None:
-    df = pd.read_excel(uploaded_file)
-    st.success(f"Loaded {df.shape[0]} rows and {df.shape[1]} columns from the file.")
+    # Allow user to pick a worksheet
+    xls = pd.ExcelFile(uploaded_file)
+    sheet = st.selectbox("Worksheet (tab) to use", xls.sheet_names)
+    df = xls.parse(sheet)
+
+    st.success(f"Loaded sheet '{sheet}' with {df.shape[0]} rows and {df.shape[1]} columns.")
 
     # 2) MAP COLUMNS
     cols = df.columns.tolist()
-    st.markdown("### 1️⃣ Map your columns")
+    st.markdown("### 1️⃣ Map your columns")
     date_col = st.selectbox("Date column", cols, index=0)
     customer_col = st.selectbox("Customer column", cols, index=1)
     sku_col = st.selectbox("SKU column", cols, index=2)
@@ -25,10 +29,10 @@ if uploaded_file is not None:
 
     data = df[[date_col, customer_col, sku_col, value_col]].copy()
     data.columns = ["date", "customer", "sku", "value"]
-    data["date"] = pd.to_datetime(data["date"])  # ensure datetime dtype
+    data["date"] = pd.to_datetime(data["date"])
 
     # 3) FILTERS
-    st.markdown("### 2️⃣ Choose customer & SKU to model")
+    st.markdown("### 2️⃣ Choose customer & SKU to model")
     customer = st.selectbox("Customer", sorted(data["customer"].unique()))
     sku = st.selectbox(
         "SKU", sorted(data.loc[data["customer"] == customer, "sku"].unique())
@@ -64,10 +68,7 @@ if uploaded_file is not None:
 
     if st.session_state["events"]:
         st.sidebar.write(
-            {
-                d.strftime("%Y-%m-%d"): f"+{int(r*100)}%"
-                for d, r in st.session_state["events"].items()
-            }
+            {d.strftime("%Y-%m-%d"): f"+{int(r*100)}%" for d, r in st.session_state["events"].items()}
         )
 
     # 5) FORECAST BUTTON
@@ -109,5 +110,5 @@ else:
 
 # 6) FOOTER
 st.markdown(
-    "---\nMade with ❤️ & Streamlit.  |  Adjust the model, add events, and tweak lift ratios; results update instantly."
+    "---\nMade with ❤️ & Streamlit.  |  Adjust the model, add events, and tweak lift ratios; results update instantly."
 )
