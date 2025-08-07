@@ -190,3 +190,27 @@ if uploaded_file is not None:
 
         # Round values
         forecast = forecast.round(0)
+
+        # ---- DISPLAY FORECAST ----
+        disp_df = forecast.reset_index().rename(columns={"index": "date", 0: "forecast"})
+        disp_df["date_str"] = disp_df["date"].dt.to_period("M").astype(str)
+
+        chart = (
+            alt.Chart(disp_df)
+            .mark_line(point=True)
+            .encode(
+                x=alt.X("date_str:N", title="Month"),
+                y=alt.Y("forecast:Q", title="Forecast"),
+                tooltip=["date_str", "forecast"],
+            )
+            + alt.Chart(disp_df)
+            .mark_text(dy=-12)
+            .encode(x="date_str:N", y="forecast:Q", text="forecast:Q")
+        ).properties(height=300)
+
+        st.subheader("🔮 Monthly Forecast")
+        st.altair_chart(chart, use_container_width=True)
+
+        # ---- DOWNLOAD ----
+        csv = disp_df[["date", "forecast"]].to_csv(index=False).encode()
+        st.download_button("Download CSV", csv, "forecast.csv", "text/csv")
