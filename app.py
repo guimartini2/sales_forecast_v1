@@ -82,60 +82,22 @@ if uploaded_file is not None:
         ma_window = st.sidebar.slider("MA window (months)", 2, 24, value=3)
     elif model_type == "Exponential Smoothing (no season)":
         alpha = st.sidebar.slider("Smoothing alpha", 0.01, 1.0, value=0.3)
-    elif model_type == "Holt‑Winters Seasonal":
-        seasonal_periods = st.sidebar.slider("Season length (months)", 3, 24, value=12)
-        seasonality = st.sidebar.selectbox("Seasonality type", ["add", "mul"], index=0)
-        trend_type = st.sidebar.selectbox("Trend type", ["add", "mul", None], index=0)
-    elif model_type == "Prophet":
-        if Prophet is None:
-            st.sidebar.error(
-                "Prophet not installed. Add `prophet` to requirements.txt and redeploy."
-            )
-
-    # 5) EVENTS / LIFTS
-    st.sidebar.markdown("---")
-    st.sidebar.header("📅 Events / Lifts (monthly)")
-    with st.sidebar.form(key="event_form"):
-        event_date = st.date_input("Event month")
-        lift_pct = st.number_input("Lift % vs baseline", value=10.0, step=1.0)
-        submitted = st.form_submit_button("Add / update event")
-
-    if "events" not in st.session_state:
-        st.session_state["events"] = {}
-
-    if submitted:
-        event_month = (pd.to_datetime(event_date) + pd.offsets.MonthEnd(0)).normalize()
-        st.session_state["events"][event_month] = lift_pct / 100.0
-
-    if st.session_state["events"]:
-        st.sidebar.write(
-            {
-                d.strftime("%Y-%m"): f"+{int(r * 100)}%"
-                for d, r in st.session_state["events"].items()
-            }
-        )
-
-    # 6) RUN FORECAST
-    if st.button("🚀 Run forecast"):
-        # Aggregate to monthly frequency
-        ts = agg_series.resample("M").sum().fillna(0)
-
-        # Fit & forecast
-        if model_type == "Moving Average":
-            last_ma = ts.rolling(window=ma_window).mean().iloc[-1]
-            future_idx = pd.date_range(
-                ts.index[-1] + pd.offsets.MonthEnd(1), periods=horizon, freq="M"
-            )
-            forecast = pd.Series(last_ma, index=future_idx)
-
-        elif model_type == "Exponential Smoothing (no season)":
+    elif model_type.startswith("Holt"):
+            # Validate sufficient data length
+            if len(ts) < 2 * seasonal_periods:
+                st.error(
+                    f"Holt‑Winters needs ≥2×season length (≥{2*seasonal_periods} months) "
+                    f"but only {len(ts)} available. Choose a shorter season or provide more data."
+                )
+                st.stop()
             model = ExponentialSmoothing(
                 ts,
-                trend=None,
-                seasonal=None,
+                trend=trend_type,
+                seasonal=seasonality,
+                seasonal_periods=seasonal_periods,
                 initialization_method="estimated",
             )
-            fit = model.fit(smoothing_level=alpha, optimized=False)
+            fit = model.fit()
             forecast = fit.forecast(horizon)
 
         elif model_type == "Holt‑Winters Seasonal":
