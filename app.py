@@ -192,8 +192,10 @@ if uploaded_file is not None:
         forecast = forecast.round(0)
         forecast.name = "forecast"  # guarantee consistent series name
 
-        # ---- DISPLAY FORECAST ----
-        disp_df = forecast.reset_index()  # columns: date, forecast
+                # ---- DISPLAY FORECAST ----
+        disp_df = forecast.reset_index()
+        # ensure column names are exactly 'date' and 'forecast'
+        disp_df.columns = ["date", "forecast"]
         disp_df["date_str"] = disp_df["date"].dt.to_period("M").astype(str)
 
         chart = (
@@ -214,4 +216,4 @@ if uploaded_file is not None:
 
         # ---- DOWNLOAD ----
         csv = disp_df[["date", "forecast"]].to_csv(index=False).encode()
-        st.download_button("Download CSV", csv, "forecast.csv", "text/csv")
+        st.download_button("Download CSV", csv, "forecast.csv", "text/csv")("Download CSV", csv, "forecast.csv", "text/csv")
