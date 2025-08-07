@@ -183,19 +183,18 @@ if uploaded_file is not None:
                 m.predict(future).set_index("ds")["yhat"].iloc[-horizon:]
             )
 
-        # Apply lifts
+                # Apply lifts
         for d, r in st.session_state["events"].items():
             if d in forecast.index:
                 forecast.loc[d] *= 1 + r
 
-                # Round values and ensure consistent column names
+        # Finalise series – round and set consistent names
         forecast = forecast.round(0)
-        forecast.name = "forecast"  # guarantee consistent series name
+        forecast.name = "forecast"
+        forecast.index.name = "date"
 
-                # ---- DISPLAY FORECAST ----
-        disp_df = forecast.reset_index()
-        # ensure column names are exactly 'date' and 'forecast'
-        disp_df.columns = ["date", "forecast"]
+        # ---- DISPLAY FORECAST ----
+        disp_df = forecast.reset_index()  # columns: date, forecast
         disp_df["date_str"] = disp_df["date"].dt.to_period("M").astype(str)
 
         chart = (
@@ -216,4 +215,4 @@ if uploaded_file is not None:
 
         # ---- DOWNLOAD ----
         csv = disp_df[["date", "forecast"]].to_csv(index=False).encode()
-        st.download_button("Download CSV", csv, "forecast.csv", "text/csv")("Download CSV", csv, "forecast.csv", "text/csv")
+        st.download_button("Download CSV", csv, "forecast.csv", "text/csv")
