@@ -57,12 +57,14 @@ if uploaded_file is not None:
 
     st.sidebar.markdown("---")
     st.sidebar.header("📅 Events / Lifts")
-    with st.sidebar.form("events"):
+    with st.sidebar.form(key="event_form"):
         event_date = st.date_input("Event date")
         lift_pct = st.number_input("Lift % vs baseline", value=10.0, step=1.0)
         submitted = st.form_submit_button("Add / update event")
+
     if "events" not in st.session_state:
         st.session_state["events"] = {}
+
     if submitted:
         st.session_state["events"][pd.to_datetime(event_date)] = lift_pct / 100.0
 
