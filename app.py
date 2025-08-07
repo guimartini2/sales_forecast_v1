@@ -52,10 +52,9 @@ if uploaded_file is not None:
     )
     filtered = subset[subset["sku"].isin(skus)]
 
-    agg_series = filtered.groupby("date")["value"].sum().sort_index()
-    # Display raw history aggregated by month
-    monthly_series = agg_series.resample("M").sum()
-    st.line_chart(monthly_series, height=250)
+    # Raw history aggregated monthly for display
+    monthly_hist = filtered.groupby("date")["value"].sum().sort_index().resample("M").sum()
+    st.line_chart(monthly_hist, height=250)
 
     # 4) SIDEBAR SETTINGS
     st.sidebar.header("⚙️ Forecast settings")
@@ -66,41 +65,67 @@ if uploaded_file is not None:
         [
             "Moving Average",
             "Exponential Smoothing (no season)",
-            "Holt‑Winters Seasonal",
+            "Holt-Winters Seasonal",
             "Prophet",
         ],
     )
 
     # Model‑specific parameters
-    alpha = None
-    ma_window = None
+    ma_window = st.sidebar.slider("MA window (months)", 2, 24, value=3) if model_type == "Moving Average" else None
+    alpha = st.sidebar.slider("Smoothing alpha", 0.01, 1.0, value=0.3) if model_type == "Exponential Smoothing (no season)" else None
+
     seasonal_periods = None
     seasonality = None
     trend_type = None
+    if model_type == "Holt-Winters Seasonal":
+        seasonal_periods = st.sidebar.slider("Season length (months)", 3, 24, value=12)
+        seasonality = st.sidebar.selectbox("Seasonality type", ["add", "mul"], index=0)
+        trend_type = st.sidebar.selectbox("Trend type", ["add", "mul", None], index=0)
 
-    if model_type == "Moving Average":
-        ma_window = st.sidebar.slider("MA window (months)", 2, 24, value=3)
-    elif model_type == "Exponential Smoothing (no season)":
-        alpha = st.sidebar.slider("Smoothing alpha", 0.01, 1.0, value=0.3)
-    elif model_type.startswith("Holt"):
-            # Validate sufficient data length
-            if len(ts) < 2 * seasonal_periods:
-                st.error(
-                    f"Holt‑Winters needs ≥2×season length (≥{2*seasonal_periods} months) "
-                    f"but only {len(ts)} available. Choose a shorter season or provide more data."
-                )
-                st.stop()
-            model = ExponentialSmoothing(
-                ts,
-                trend=trend_type,
-                seasonal=seasonality,
-                seasonal_periods=seasonal_periods,
-                initialization_method="estimated",
-            )
-            fit = model.fit()
+    if model_type == "Prophet" and Prophet is None:
+        st.sidebar.error("Prophet not installed. Add `prophet` to requirements.txt and redeploy.")
+
+    # 5) EVENTS / LIFTS
+    st.sidebar.markdown("---")
+    st.sidebar.header("📅 Events / Lifts (monthly)")
+    with st.sidebar.form(key="event_form"):
+        event_date = st.date_input("Event month")
+        lift_pct = st.number_input("Lift % vs baseline", value=10.0, step=1.0)
+        submitted = st.form_submit_button("Add / update event")
+
+    if "events" not in st.session_state:
+        st.session_state["events"] = {}
+
+    if submitted:
+        event_month = (pd.to_datetime(event_date) + pd.offsets.MonthEnd(0)).normalize()
+        st.session_state["events"][event_month] = lift_pct / 100.0
+
+    if st.session_state["events"]:
+        st.sidebar.write({d.strftime("%Y-%m"): f"+{int(r*100)}%" for d, r in st.session_state["events"].items()})
+
+    # 6) RUN FORECAST
+    if st.button("🚀 Run forecast"):
+        # Aggregate history to monthly series for modeling
+        ts = filtered.groupby("date")["value"].sum().sort_index().resample("M").sum().fillna(0)
+
+        # Fit & forecast according to chosen model
+        if model_type == "Moving Average":
+            last_ma = ts.rolling(window=ma_window).mean().iloc[-1]
+            future_idx = pd.date_range(ts.index[-1] + pd.offsets.MonthEnd(1), periods=horizon, freq="M")
+            forecast = pd.Series(last_ma, index=future_idx)
+
+        elif model_type == "Exponential Smoothing (no season)":
+            model = ExponentialSmoothing(ts, trend=None, seasonal=None, initialization_method="estimated")
+            fit = model.fit(smoothing_level=alpha, optimized=False)
             forecast = fit.forecast(horizon)
 
-        elif model_type == "Holt‑Winters Seasonal":
+        elif model_type == "Holt-Winters Seasonal":
+            # Validate data length
+            if len(ts) < 2 * seasonal_periods:
+                st.error(
+                    f"Holt‑Winters needs ≥2×season length (≥{2*seasonal_periods} months) but only {len(ts)} available."
+                )
+                st.stop()
             model = ExponentialSmoothing(
                 ts,
                 trend=trend_type,
@@ -113,16 +138,10 @@ if uploaded_file is not None:
 
         elif model_type == "Prophet":
             if Prophet is None:
-                st.error(
-                    "Prophet library missing. Add `prophet` to requirements.txt and redeploy."
-                )
+                st.error("Prophet library missing. Add `prophet` to requirements.txt and redeploy.")
                 st.stop()
             df_prophet = ts.reset_index().rename(columns={"date": "ds", "value": "y"})
-            m = Prophet(
-                yearly_seasonality=True,
-                monthly_seasonality=False,
-                weekly_seasonality=False,
-            )
+            m = Prophet(yearly_seasonality=True, monthly_seasonality=False, weekly_seasonality=False)
             m.fit(df_prophet)
             future = m.make_future_dataframe(periods=horizon, freq="M")
             forecast_df = m.predict(future)
@@ -133,7 +152,7 @@ if uploaded_file is not None:
             if d in forecast.index:
                 forecast.loc[d] *= 1 + r
 
-        # Display
+        # Display forecast
         st.subheader("🔮 Monthly Forecast")
         st.line_chart(forecast, height=250)
 
@@ -154,6 +173,4 @@ else:
     st.info("👆 Upload an Excel file to begin.")
 
 # 7) FOOTER
-st.markdown(
-    "---\nMade with ❤️ & Streamlit. | Monthly forecasts with optional customer/SKU aggregation."
-)
+st.markdown("---\nMade with ❤️ & Streamlit. | Monthly forecasts with optional customer/SKU aggregation.")
