@@ -219,4 +219,3 @@ st.markdown(
     "---\nMade with ❤️ & Streamlit | Monthly forecasts, yearly recap, event lifts, "
     "non-negative clipping."
 )
-```
