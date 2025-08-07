@@ -2,4 +2,5 @@ streamlit>=1.35
 pandas
 numpy
 statsmodels
-openpyxl  # for reading Excel files
+openpyxl      # Excel reading
+prophet       # forecasting model
