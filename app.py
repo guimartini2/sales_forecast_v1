@@ -78,99 +78,41 @@ if uploaded_file is not None:
     monthly_hist = filtered.groupby("date")["value"].sum().sort_index().resample("M").sum()
     hist_df = monthly_hist.reset_index()
     hist_df["date_str"] = hist_df["date"].dt.to_period("M").astype(str)
-    st.altair_chart(
-        alt.Chart(hist_df)
-        .mark_line(point=True)
-        .encode(x="date_str:N", y="value:Q", tooltip=["date_str", "value"])
-        .properties(height=250),
-        use_container_width=True,
-    )
+            st.subheader("🔮 Monthly Forecast")
+        st.altair_chart(chart, use_container_width=True)
 
-    # 5️⃣ Forecast settings ----------------------------------------------
-    st.sidebar.header("⚙️ Forecast settings")
-    horizon = st.sidebar.number_input("Forecast horizon (months)", 1, 36, 12)
-    model_type = st.sidebar.selectbox(
-        "Model",
-        ["Moving Average", "Exponential Smoothing (no season)", "Holt-Winters Seasonal", "Prophet"],
-    )
+        # ---- Yearly Recap --------------------------------------------
+        combined = pd.concat([ts.rename("actual"), forecast]).sort_index()
+        combined_df = combined.to_frame(name="value")
+        combined_df["year"] = combined_df.index.year
+        annual = combined_df.groupby("year")["value"].sum().round(0)
+        recap = annual.to_frame(name="value").reset_index()
+        recap["YOY_abs"] = recap["value"].diff().fillna(0).round(0)
+        recap["YOY_pct"] = recap["value"].pct_change().mul(100).round(1).fillna(0)
+        latest_month = ts.index.max().month
+        ytd = combined_df[combined_df.index.month <= latest_month].groupby("year")["value"].sum().round(0)
+        recap = recap.merge(ytd.to_frame(name="YTD"), on="year", how="left")
+        recap["YTD_vs_prev_abs"] = recap["YTD"].diff().fillna(0).round(0)
+        recap["YTD_vs_prev_pct"] = recap["YTD"].pct_change().mul(100).round(1).fillna(0)
 
-    ma_window = st.sidebar.slider("MA window", 2, 24, 3) if model_type == "Moving Average" else None
-    alpha = st.sidebar.slider("Alpha", 0.01, 1.0, 0.3) if model_type == "Exponential Smoothing (no season)" else None
-    if model_type == "Holt-Winters Seasonal":
-        season_len = st.sidebar.slider("Season length", 3, 24, 12)
-        seasonality = st.sidebar.selectbox("Seasonality", ["add", "mul"], 0)
-        trend = st.sidebar.selectbox("Trend", ["add", "mul", None], 0)
-    else:
-        season_len = seasonality = trend = None
+        st.subheader("📊 Yearly Recap")
+        st.dataframe(
+            recap.style.format(
+                {
+                    "value": "{:,.0f}",
+                    "YOY_abs": "{:+,.0f}",
+                    "YOY_pct": "{:+.1f}%",
+                    "YTD": "{:,.0f}",
+                    "YTD_vs_prev_abs": "{:+,.0f}",
+                    "YTD_vs_prev_pct": "{:+.1f}%",
+                }
+            )
+        )
 
-    if model_type == "Prophet" and Prophet is None:
-        st.sidebar.error("Prophet not installed. Add `prophet` to requirements.txt and redeploy.")
+        # ---- Download CSV -------------------------------------------
+        csv = disp_df[["date", "forecast"]].to_csv(index=False).encode()
+        st.download_button("Download forecast CSV", csv, "forecast.csv", "text/csv")
 
-    # 6️⃣ Events ----------------------------------------------------------
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("Events / lifts")
-    with st.sidebar.form("event_form"):
-        e_date = st.date_input("Event month")
-        e_lift = st.number_input("Lift %", value=10.0)
-        add_e = st.form_submit_button("Add/update")
-    if "events" not in st.session_state:
-        st.session_state["events"] = {}
-    if add_e:
-        mth = (pd.to_datetime(e_date) + pd.offsets.MonthEnd(0)).normalize()
-        st.session_state["events"][mth] = e_lift / 100
-    if st.session_state["events"]:
-        st.sidebar.write({d.strftime("%Y-%m"): f"+{int(r*100)}%" for d, r in st.session_state["events"].items()})
-
-    # 7️⃣ Run forecast ----------------------------------------------------
-    if st.button("🚀 Forecast"):
-        ts = filtered.groupby("date")["value"].sum().sort_index().resample("M").sum().fillna(0)
-
-        # --- Fit model ---
-        if model_type == "Moving Average":
-            last_ma = ts.rolling(ma_window).mean().iloc[-1]
-            idx = pd.date_range(ts.index[-1] + pd.offsets.MonthEnd(1), periods=horizon, freq="M")
-            forecast = pd.Series(last_ma, idx)
-        elif model_type == "Exponential Smoothing (no season)":
-            model = ExponentialSmoothing(ts, trend=None, seasonal=None, initialization_method="estimated")
-            forecast = model.fit(smoothing_level=alpha, optimized=False).forecast(horizon)
-        elif model_type == "Holt-Winters Seasonal":
-            if len(ts) < 2 * season_len:
-                st.error("Need at least two seasons of data.")
-                st.stop()
-            model = ExponentialSmoothing(ts, trend=trend, seasonal=seasonality, seasonal_periods=season_len, initialization_method="estimated")
-            forecast = model.fit().forecast(horizon)
-        else:  # Prophet
-            if Prophet is None:
-                st.error("Prophet not installed")
-                st.stop()
-            dfp = ts.reset_index().rename(columns={"date": "ds", "value": "y"})
-            m = Prophet(yearly_seasonality=True, weekly_seasonality=False, daily_seasonality=False)
-            m.add_seasonality(name="monthly", period=30.5, fourier_order=5)
-            m.fit(dfp)
-            future = m.make_future_dataframe(horizon, freq="M")
-            forecast = m.predict(future).set_index("ds")["yhat"].iloc[-horizon:]
-
-        # --- Apply lifts & post-process ---
-        for d, r in st.session_state["events"].items():
-            if d in forecast.index:
-                forecast.loc[d] *= 1 + r
-
-        forecast = forecast.clip(lower=0).round(0)
-        forecast.name = "forecast"
-        forecast.index.name = "date"
-
-        # ---- Combined chart -------------------------------------------
-        disp_df = forecast.reset_index()
-        disp_df["date_str"] = disp_df["date"].dt.to_period("M").astype(str)
-
-        chart = (
-            alt.Chart(disp_df)
-            .mark_line(point=True, color="#ff7f0e")
-            .encode(x="date_str:N", y="forecast:Q", tooltip=["date_str", "forecast"])
-            + alt.Chart(disp_df)
-            .mark_text(dy=-12, color="#ff7f0e")
-            .encode(x="date_str:N", y="forecast:Q", text="forecast:Q")
-        ).properties(height=300)
-
-        st.subheader("🔮 Monthly Forecast")
-        st.altair_chart(chart, use_container_width
+# Footer ---------------------------------------------------------------
+st.markdown("---
+Made with ❤️ & Streamlit | Monthly forecasts, recap table, non‑negative clipping, events & more.")
