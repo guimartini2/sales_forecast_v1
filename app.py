@@ -50,13 +50,11 @@ if uploaded_file is not None:
         month_cols = st.multiselect("Month columns", month_cols, default=month_cols)
 
         long = raw[id_cols + month_cols].melt(id_vars=id_cols, var_name="date", value_name="value")
-        # Parse month strings (handles "Jan-24", "2024‑01", etc.)
         long["date"] = pd.to_datetime(long["date"], errors="coerce", infer_datetime_format=True)
         if long["date"].isna().any():
-            st.error("Some month headers could not be parsed into dates. Please rename columns like '2024‑01'.")
+            st.error("Some month headers couldn’t be parsed. Rename like '2024-01'.")
             st.stop()
 
-        # Let user map id cols to customer & SKU
         st.markdown("### Map identifier columns")
         customer_col = st.selectbox("Customer column", id_cols, index=0)
         sku_col = st.selectbox("SKU column", id_cols, index=1 if len(id_cols)>1 else 0)
@@ -65,14 +63,24 @@ if uploaded_file is not None:
 
     # Standardise types
     data["date"] = pd.to_datetime(data["date"])
+    data["customer"] = data["customer"].astype(str)
+    data["sku"] = data["sku"].astype(str)
 
     # 3️⃣ Filters
     st.markdown("### Choose customers / SKUs to forecast")
-    customers = st.multiselect("Customer(s)", sorted(data["customer"].unique()), default=list(data["customer"].unique())[:1])
-    subset = data[data["customer"].isin(customers)]
+    customer_options = sorted(data["customer"].unique())
+    customers_default = customer_options[:1] if customer_options else []
+    customers = st.multiselect("Customer(s)", customer_options, default=customers_default)
+    subset = data[data["customer"].isin(customers)] if customers else data.copy()
 
-    skus = st.multiselect("SKU(s)", sorted(subset["sku"].unique()), default=list(subset["sku"].unique())[:1])
-    filtered = subset[subset["sku"].isin(skus)]
+    sku_options = sorted(subset["sku"].unique())
+    sku_default = sku_options[:1] if sku_options else []
+    skus = st.multiselect("SKU(s)", sku_options, default=sku_default)
+    filtered = subset[subset["sku"].isin(skus)] if skus else subset.copy()
+
+    if filtered.empty:
+        st.warning("No data for selected filters.")
+        st.stop()
 
     # 4️⃣ Display history aggregated monthly
     monthly_hist = filtered.groupby("date")["value"].sum().sort_index().resample("M").sum()
@@ -84,17 +92,22 @@ if uploaded_file is not None:
 
     model_type = st.sidebar.selectbox(
         "Model",
-        ["Moving Average", "Exponential Smoothing (no season)", "Holt‑Winters Seasonal", "Prophet"],
+        ["Moving Average", "Exponential Smoothing (no season)", "Holt-Winters Seasonal", "Prophet"],
     )
 
+    # Model‑specific widgets
+    ma_window = alpha = season_len = seasonality = trend = None
     if model_type == "Moving Average":
         ma_window = st.sidebar.slider("MA window", 2, 24, 3)
     elif model_type == "Exponential Smoothing (no season)":
         alpha = st.sidebar.slider("Alpha", 0.01, 1.0, 0.3)
-    elif model_type == "Holt‑Winters Seasonal":
+    elif model_type == "Holt-Winters Seasonal":
         season_len = st.sidebar.slider("Season length", 3, 24, 12)
         seasonality = st.sidebar.selectbox("Seasonality", ["add", "mul"], 0)
         trend = st.sidebar.selectbox("Trend", ["add", "mul", None], 0)
+
+    if model_type == "Prophet" and Prophet is None:
+        st.sidebar.error("Prophet not installed. Add `prophet` to requirements.txt and redeploy.")
 
     # Events
     st.sidebar.markdown("---")
@@ -109,7 +122,7 @@ if uploaded_file is not None:
         mth = (pd.to_datetime(e_date) + pd.offsets.MonthEnd(0)).normalize()
         st.session_state["events"][mth] = e_lift / 100
     if st.session_state["events"]:
-        st.sidebar.write({d.strftime("%Y‑%m"): f"+{int(r*100)}%" for d,r in st.session_state["events"].items()})
+        st.sidebar.write({d.strftime("%Y-%m"): f"+{int(r*100)}%" for d,r in st.session_state["events"].items()})
 
     # 6️⃣ Run forecast
     if st.button("🚀 Forecast"):
@@ -123,7 +136,7 @@ if uploaded_file is not None:
             model = ExponentialSmoothing(ts, trend=None, seasonal=None, initialization_method="estimated")
             fit = model.fit(smoothing_level=alpha, optimized=False)
             forecast = fit.forecast(horizon)
-        elif model_type == "Holt‑Winters Seasonal":
+        elif model_type == "Holt-Winters Seasonal":
             if len(ts) < 2*season_len:
                 st.error("Need at least two seasons of data."); st.stop()
             model = ExponentialSmoothing(ts, trend=trend, seasonal=seasonality, seasonal_periods=season_len, initialization_method="estimated")
@@ -136,8 +149,7 @@ if uploaded_file is not None:
             m.add_seasonality(name="monthly", period=30.5, fourier_order=5)
             m.fit(dfp)
             future = m.make_future_dataframe(horizon, freq="M")
-            yhat = m.predict(future).set_index("ds")["yhat"].iloc[-horizon:]
-            forecast = yhat
+            forecast = m.predict(future).set_index("ds")["yhat"].iloc[-horizon:]
 
         # Apply lifts
         for d,r in st.session_state["events"].items():
