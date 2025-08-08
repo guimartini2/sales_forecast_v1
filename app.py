@@ -207,13 +207,13 @@ if st.button("🚀 Forecast"):
         if seasonality == "mul" and (ts_qty <= 0).any():
             st.error("Multiplicative seasonality requires strictly positive quantities. Choose 'add' or remove zero months.")
             st.stop()
-        forecast_qty = ExponentialSmoothing((
+        forecast_qty = ExponentialSmoothing(
             ts_qty,
             trend=trend,
             seasonal=seasonality,
             seasonal_periods=season_len,
             initialization_method="estimated",
-        ).fit().forecast(horizon)
+        ).fit().forecast(horizon).fit().forecast(horizon)
 
     else:  # Prophet
         if Prophet is None:
