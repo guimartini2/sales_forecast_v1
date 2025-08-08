@@ -284,21 +284,15 @@ if st.button("🚀 Forecast"):
     if forecast_rev is not None:
         fc_df = fc_df.merge(rev_df, on="date")
         export_cols.append("forecast_rev")
+
     st.download_button(
-        "Download forecast CSV",
-        fc_df[export_cols].to_csv(index=False).encode(),
+        label="Download forecast CSV",
+        data=fc_df[export_cols].to_csv(index=False).encode(),
         file_name="forecast.csv",
         mime="text/csv",
-    )(
-        "Download forecast CSV",
-        fc_df[export_cols].to_csv(index=False).encode(),
-        "forecast.csv",
-        "text/csv",
-    ).encode(),
-        "forecast.csv",
-        "text/csv",
     )
 
 # ------------------------------------------------------------------
 st.markdown("""---
+Made with ❤️ & Streamlit – valuation ready ✅""")("""---
 Made with ❤️ & Streamlit – valuation ready ✅""")
