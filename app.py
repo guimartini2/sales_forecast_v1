@@ -169,23 +169,99 @@ else:
 # ... (reuse existing events code) ...
 
 # ------------------------------------------------------------------
-# 8  Run forecast (qty) and revenue if price provided
+# ------------------------------------------------------------------
+# 8️⃣ Run forecast (qty) and revenue if price provided
 # ------------------------------------------------------------------
 if st.button("🚀 Forecast"):
     ts_qty = filtered.groupby("date")["qty"].sum().sort_index().resample("M").sum().fillna(0)
 
-    # Fit model on qty series (same as before: MA / ETS / HW / Prophet)
-    # ... (reuse existing logic but use ts_qty) ...
-    # Result: forecast_qty Series
+    # ----------------- fit model on qty -----------------
+    if model == "Moving Average":
+        base = ts_qty.rolling(ma_window).mean().iloc[-1]
+        idx = pd.date_range(ts_qty.index[-1] + pd.offsets.MonthEnd(1), periods=horizon, freq="M")
+        forecast_qty = pd.Series(base, index=idx)
 
-    # Valuation
-    if price_map:
+    elif model == "Exponential Smoothing (no season)":
+        forecast_qty = ExponentialSmoothing(
+            ts_qty, trend=None, seasonal=None, initialization_method="estimated"
+        ).fit(smoothing_level=alpha, optimized=False).forecast(horizon)
+
+    elif model == "Holt-Winters Seasonal":
+        if len(ts_qty) < 2 * season_len:
+            st.error("Need at least two seasons of data."); st.stop()
+        forecast_qty = ExponentialSmoothing(
+            ts_qty,
+            trend=trend,
+            seasonal=seasonality,
+            seasonal_periods=season_len,
+            initialization_method="estimated",
+        ).fit().forecast(horizon)
+
+    else:  # Prophet
+        if Prophet is None:
+            st.error("Prophet not installed"); st.stop()
+        dfp = ts_qty.reset_index().rename(columns={"date": "ds", "qty": "y"})
+        m = Prophet(yearly_seasonality=True, weekly_seasonality=False, daily_seasonality=False)
+        m.add_seasonality(name="monthly", period=30.5, fourier_order=5)
+        m.fit(dfp)
+        future = m.make_future_dataframe(horizon, freq="M")
+        forecast_qty = m.predict(future).set_index("ds")["yhat"].iloc[-horizon:]
+
+    forecast_qty = forecast_qty.clip(lower=0).round(0)
+
+    # ----------------- revenue valuation -----------------
+    if price_map and not forecast_qty.empty:
         if sel_sku:
-            avg_price = filtered[filtered["sku"].isin(sel_sku)]["price"].mean()
+            sel_prices = filtered[filtered["sku"].isin(sel_sku)]["price"]
         else:
-            avg_price = filtered["price"].mean()
-        forecast_rev = forecast_qty * avg_price
-    # Display charts & tables similar to before for qty and revenue
-    # ...
+            sel_prices = filtered["price"]
+        avg_price = sel_prices.replace(0, pd.NA).dropna().mean()
+        if pd.isna(avg_price):
+            st.warning("No valid price to value forecast; using 0.")
+            avg_price = 0.0
+        forecast_rev = (forecast_qty * avg_price).round(0)
+    else:
+        forecast_rev = None
 
-st.markdown("---\nMade with ❤️ & Streamlit – now supports price valuation ☑️")
+    # ----------------- display -----------------
+    fc_df = forecast_qty.reset_index()
+    fc_df.columns = ["date", "forecast_qty"]
+    fc_df["date_str"] = fc_df["date"].dt.to_period("M").astype(str)
+
+    qty_chart_fc = (
+        alt.Chart(fc_df)
+        .mark_line(point=True, color="#ff7f0e")
+        .encode(x="date_str:N", y="forecast_qty:Q", tooltip=["date_str", "forecast_qty"])
+        .properties(height=250)
+    )
+    st.subheader("🔮 Forecast – Quantity")
+    st.altair_chart(qty_chart_fc, use_container_width=True)
+
+    if forecast_rev is not None:
+        rev_df = forecast_rev.reset_index()
+        rev_df.columns = ["date", "forecast_rev"]
+        rev_df["date_str"] = rev_df["date"].dt.to_period("M").astype(str)
+        rev_chart = (
+            alt.Chart(rev_df)
+            .mark_line(point=True, color="#2ca02c")
+            .encode(x="date_str:N", y="forecast_rev:Q", tooltip=["date_str", "forecast_rev"])
+            .properties(height=250)
+        )
+        st.subheader("💰 Forecast – Revenue")
+        st.altair_chart(rev_chart, use_container_width=True)
+
+    # download
+    export_cols = ["date", "forecast_qty"]
+    if forecast_rev is not None:
+        fc_df = fc_df.merge(rev_df, on="date")
+        export_cols += ["forecast_rev"]
+    st.download_button(
+        "Download forecast CSV",
+        fc_df[export_cols].to_csv(index=False).encode(),
+        "forecast.csv",
+        "text/csv",
+    )
+
+# ------------------------------------------------------------------
+st.markdown("---
+Made with ❤️ & Streamlit – valuation ready ✅")
