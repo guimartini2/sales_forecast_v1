@@ -265,12 +265,28 @@ if st.button("🚀 Forecast"):
         st.subheader("💰 Forecast – Revenue")
         st.altair_chart(rev_chart, use_container_width=True)
 
-    # download
+    # ----------------- annual table -----------------
+    annual_qty = forecast_qty.groupby(forecast_qty.index.year).sum().rename("Units")
+    if forecast_rev is not None:
+        annual_rev = forecast_rev.groupby(forecast_rev.index.year).sum().rename("Revenue")
+        annual_tbl = pd.concat([annual_qty, annual_rev], axis=1).round(0)
+    else:
+        annual_tbl = annual_qty.to_frame().round(0)
+
+    st.subheader("📅 Annual Forecast Summary")
+    st.dataframe(annual_tbl)
+
+    # download csv
     export_cols = ["date", "forecast_qty"]
     if forecast_rev is not None:
         fc_df = fc_df.merge(rev_df, on="date")
-        export_cols += ["forecast_rev"]
+        export_cols.append("forecast_rev")
     st.download_button(
+        "Download forecast CSV",
+        fc_df[export_cols].to_csv(index=False).encode(),
+        "forecast.csv",
+        "text/csv",
+    )(
         "Download forecast CSV",
         fc_df[export_cols].to_csv(index=False).encode(),
         "forecast.csv",
