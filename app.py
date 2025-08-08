@@ -24,16 +24,23 @@ price_file = st.file_uploader("Upload price list (SKU → price) Excel / CSV", t
 price_map = {}
 if price_file is not None:
     if price_file.name.endswith(".csv"):
-        price_df = pd.read_csv(price_file)
+        price_raw = pd.read_csv(price_file)
     else:
-        price_df = pd.read_excel(price_file)
-    # expect cols: sku, price (case‑insensitive)
-    price_df.columns = [c.lower() for c in price_df.columns]
-    if not {"sku", "price"}.issubset(price_df.columns):
-        st.error("Price file must contain 'sku' and 'price' columns.")
-        st.stop()
-    price_map = dict(price_df[["sku", "price"]].values)
-    st.success(f"Loaded {len(price_map)} SKU prices.")
+        # choose sheet if multiple
+        xls_price = pd.ExcelFile(price_file)
+        price_sheet = st.selectbox("Price sheet (tab)", xls_price.sheet_names, key="price_sheet")
+        price_raw = xls_price.parse(price_sheet)
+
+    st.markdown("### Map price‑list columns")
+    price_cols = price_raw.columns.tolist()
+    sku_price_col   = st.selectbox("SKU column", price_cols, 0, key="sku_price_col")
+    value_price_col = st.selectbox("Price column", price_cols, 1, key="value_price_col")
+
+    price_df = price_raw[[sku_price_col, value_price_col]].copy()
+    price_df.columns = ["sku", "price"]
+    price_df["sku"] = price_df["sku"].astype(str)
+    price_map = dict(price_df.values)
+    st.success(f"Loaded {len(price_map)} mapped SKU prices.")
 
 # ------------------------------------------------------------------
 # 2  Load sales sheet
