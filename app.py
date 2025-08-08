@@ -12,12 +12,30 @@ st.set_page_config(page_title="Sales Forecast", layout="wide")
 st.title("📈 Sales Forecasting Tool – Monthly (with valuation)")
 
 # ------------------------------------------------------------------
-# 1  Upload sales data
 # ------------------------------------------------------------------
-sales_file = st.file_uploader("Upload sales history Excel (.xlsx)", type=["xlsx"], key="sales")
-if sales_file is None:
-    st.info("👆 Upload sales file to begin.")
+# 1  Upload sales data (multiple files supported)
+# ------------------------------------------------------------------
+sales_files = st.file_uploader(
+    "Upload one or more sales history Excel files (.xlsx)",
+    type=["xlsx"],
+    key="sales",
+    accept_multiple_files=True,
+)
+if not sales_files:
+    st.info("👆 Upload at least one Excel file to begin.")
     st.stop()
+
+# Let user pick the worksheet (tab) to use across all files
+xls0 = pd.ExcelFile(sales_files[0])
+sheet = st.selectbox("Worksheet (tab) for sales files", xls0.sheet_names)
+
+# Read and concatenate all files
+raw_list = []
+for f in sales_files:
+    xls = pd.ExcelFile(f)
+    raw_list.append(xls.parse(sheet))
+raw = pd.concat(raw_list, ignore_index=True)
+st.success(f"Loaded {len(sales_files)} file(s) → total {raw.shape[0]} rows × {raw.shape[1]} cols")
 
 # Optional price list --------------------------------------------------
 price_file = st.file_uploader("Upload price list (SKU → price) Excel / CSV", type=["xlsx", "csv"], key="prices")
