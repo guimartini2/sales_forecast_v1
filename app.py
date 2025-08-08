@@ -38,11 +38,13 @@ if price_file is not None:
         sku_price_col   = st.selectbox("SKU column", price_cols, 0, key="sku_price_col")
         value_price_col = st.selectbox("Price column", price_cols, 1, key="value_price_col")
 
-    price_df = price_raw[[sku_price_col, value_price_col]].copy()
+        price_df = price_raw[[sku_price_col, value_price_col]].copy()
     price_df.columns = ["sku", "price"]
     price_df["sku"] = price_df["sku"].astype(str)
+    # ensure numeric price
+    price_df["price"] = pd.to_numeric(price_df["price"], errors="coerce")
     price_map = dict(price_df.values)
-    st.success(f"Loaded {len(price_map)} SKU prices from price list.")
+    st.success(f"Loaded {len(price_map)} SKU prices from price list.")(f"Loaded {len(price_map)} SKU prices from price list.")
 
 # ------------------------------------------------------------------
 # 2  Load sales sheet
