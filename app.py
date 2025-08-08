@@ -96,13 +96,14 @@ data["sku"] = data["sku"].astype(str)
 
 # Attach price if available
 if price_map:
-    data["price"] = data["sku"].map(price_map)
-    missing_price = data["price"].isna().sum()
-    if missing_price:
-        st.warning(f"{missing_price} rows missing price; revenue will use 0 for those.")
-    data["rev"] = data["qty"] * data["price"].fillna(0)
+    data["price"] = pd.to_numeric(data["sku"].map(price_map), errors="coerce").fillna(0.0)
+    missing = (data["price"] == 0).sum()
+    if missing:
+        st.warning(f"{missing} rows missing price; revenue uses 0 for those.")
+    data["rev"] = data["qty"] * data["price"]
 else:
-    data["rev"] = None  # placeholder
+    data["price"] = 0.0
+    data["rev"] = 0.0
 
 # ------------------------------------------------------------------
 # 4  Filters
