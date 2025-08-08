@@ -93,6 +93,8 @@ else:
 data["date"] = pd.to_datetime(data["date"])
 data["customer"] = data["customer"].astype(str)
 data["sku"] = data["sku"].astype(str)
+# ensure qty numeric
+data["qty"] = pd.to_numeric(data["qty"], errors="coerce").fillna(0)
 
 # Attach price if available
 if price_map:
