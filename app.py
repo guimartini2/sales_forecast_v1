@@ -204,7 +204,10 @@ if st.button("🚀 Forecast"):
     elif model == "Holt-Winters Seasonal":
         if len(ts_qty) < 2 * season_len:
             st.error("Need at least two seasons of data."); st.stop()
-        forecast_qty = ExponentialSmoothing(
+        if seasonality == "mul" and (ts_qty <= 0).any():
+            st.error("Multiplicative seasonality requires strictly positive quantities. Choose 'add' or remove zero months.")
+            st.stop()
+        forecast_qty = ExponentialSmoothing((
             ts_qty,
             trend=trend,
             seasonal=seasonality,
