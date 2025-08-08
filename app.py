@@ -294,5 +294,4 @@ if st.button("🚀 Forecast"):
 
 # ------------------------------------------------------------------
 st.markdown("""---
-Made with ❤️ & Streamlit – valuation ready ✅""")("""---
-Made with ❤️ & Streamlit – valuation ready ✅""")
+Made with ❤️ & Streamlit – valuation ready ✅""")
