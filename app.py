@@ -104,13 +104,15 @@ data["qty"] = pd.to_numeric(data["qty"], errors="coerce").fillna(0)
 
 # Attach price if available
 if price_map:
-    data["price"] = pd.to_numeric(data["sku"].map(price_map), errors="coerce").fillna(0.0)
-    missing = (data["price"] == 0).sum()
+    data["price"] = pd.to_numeric(data["sku"].map(price_map), errors="coerce")
+    valid_mask = data["price"].notna() & (data["price"] > 0)
+    missing = (~valid_mask).sum()
     if missing:
-        st.warning(f"{missing} rows missing price; revenue uses 0 for those.")
+        st.warning(f"{missing} rows without a valid price were excluded from valuation.")
+    data = data[valid_mask].copy()
     data["rev"] = data["qty"] * data["price"]
 else:
-    data["price"] = 0.0
+    st.warning("No price list supplied – revenue metrics disabled.")
     data["rev"] = 0.0
 
 # ------------------------------------------------------------------
