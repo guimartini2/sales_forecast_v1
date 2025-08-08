@@ -23,24 +23,26 @@ if sales_file is None:
 price_file = st.file_uploader("Upload price list (SKU → price) Excel / CSV", type=["xlsx", "csv"], key="prices")
 price_map = {}
 if price_file is not None:
-    if price_file.name.endswith(".csv"):
-        price_raw = pd.read_csv(price_file)
-    else:
-        # choose sheet if multiple
+    st.markdown("### Price‑list options")
+    if price_file.name.lower().endswith(".csv"):
+        header_row = st.number_input("Header row (1‑based)", 1, 50, 1, key="pl_header")
+        price_raw = pd.read_csv(price_file, header=header_row - 1)
+    else:  # Excel
         xls_price = pd.ExcelFile(price_file)
-        price_sheet = st.selectbox("Price sheet (tab)", xls_price.sheet_names, key="price_sheet")
-        price_raw = xls_price.parse(price_sheet)
+        price_sheet = st.selectbox("Price sheet (tab)", xls_price.sheet_names, key="pl_sheet")
+        header_row = st.number_input("Header row (1‑based)", 1, 50, 1, key="pl_header_xls")
+        price_raw = xls_price.parse(price_sheet, header=header_row - 1)
 
-    st.markdown("### Map price‑list columns")
-    price_cols = price_raw.columns.tolist()
-    sku_price_col   = st.selectbox("SKU column", price_cols, 0, key="sku_price_col")
-    value_price_col = st.selectbox("Price column", price_cols, 1, key="value_price_col")
+    with st.expander("Map price‑list columns", expanded=False):
+        price_cols = price_raw.columns.tolist()
+        sku_price_col   = st.selectbox("SKU column", price_cols, 0, key="sku_price_col")
+        value_price_col = st.selectbox("Price column", price_cols, 1, key="value_price_col")
 
     price_df = price_raw[[sku_price_col, value_price_col]].copy()
     price_df.columns = ["sku", "price"]
     price_df["sku"] = price_df["sku"].astype(str)
     price_map = dict(price_df.values)
-    st.success(f"Loaded {len(price_map)} mapped SKU prices.")
+    st.success(f"Loaded {len(price_map)} SKU prices from price list.")
 
 # ------------------------------------------------------------------
 # 2  Load sales sheet
