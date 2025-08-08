@@ -73,12 +73,8 @@ if price_file is not None:
     st.success(f"Loaded {len(price_map)} SKU prices from price list.")
 
 # ------------------------------------------------------------------
-# 2  Load sales sheet
+# 2  Extract columns from concatenated data
 # ------------------------------------------------------------------
-xls = pd.ExcelFile(sales_file)
-sheet = st.selectbox("Worksheet (tab)", xls.sheet_names)
-raw = xls.parse(sheet)
-st.success(f"Sales: {raw.shape[0]} rows × {raw.shape[1]} cols")
 cols = raw.columns.tolist()
 
 # ------------------------------------------------------------------
