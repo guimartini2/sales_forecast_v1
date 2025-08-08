@@ -128,7 +128,14 @@ if filtered.empty:
     st.warning("No data after filtering."); st.stop()
 
 # ------------------------------------------------------------------
-# 5  History chart (qty & revenue)
+# 5  Unit price summary
+# ------------------------------------------------------------------
+if price_map:
+    unit_price = filtered["price"].mean()
+    st.markdown(f"**Unit price used for valuation:** {unit_price:,.2f}")
+
+# ------------------------------------------------------------------
+# 6  History chart (qty & revenue)
 # ------------------------------------------------------------------
 qty_hist = filtered.groupby("date")["qty"].sum().sort_index().resample("M").sum()
 hist_df = qty_hist.reset_index()
