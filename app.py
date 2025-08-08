@@ -43,7 +43,13 @@ if price_file is not None:
     price_df = price_raw[[sku_price_col, value_price_col]].copy()
     price_df.columns = ["sku", "price"]
     price_df["sku"] = price_df["sku"].astype(str)
-    price_df["price"] = pd.to_numeric(price_df["price"], errors="coerce")
+    # clean price strings (remove commas, currency symbols)
+    price_df["price"] = (
+        price_df["price"].astype(str)
+        .str.replace(r"[^0-9.\-]", "", regex=True)
+        .replace("", pd.NA)
+        .astype(float)
+    )
     price_map = dict(price_df.values)
 
     st.success(f"Loaded {len(price_map)} SKU prices from price list.")
