@@ -44,7 +44,7 @@ if price_file is not None:
     # ensure numeric price
     price_df["price"] = pd.to_numeric(price_df["price"], errors="coerce")
     price_map = dict(price_df.values)
-    st.success(f"Loaded {len(price_map)} SKU prices from price list.")(f"Loaded {len(price_map)} SKU prices from price list.")
+    st.success(f"Loaded {len(price_map)} SKU prices from price list.")} SKU prices from price list.")
 
 # ------------------------------------------------------------------
 # 2  Load sales sheet
