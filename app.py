@@ -274,9 +274,12 @@ if st.button("🚀 Forecast"):
         annual_tbl = annual_qty.to_frame().round(0)
 
     st.subheader("📅 Annual Forecast Summary")
-    st.dataframe(annual_tbl)
+    fmt = {"Units": "{:,.0f}"}
+    if "Revenue" in annual_tbl.columns:
+        fmt["Revenue"] = "{:,.0f}$"
+    st.dataframe(annual_tbl.style.format(fmt))
 
-    # download csv
+    # ----------------- download -----------------
     export_cols = ["date", "forecast_qty"]
     if forecast_rev is not None:
         fc_df = fc_df.merge(rev_df, on="date")
@@ -284,11 +287,14 @@ if st.button("🚀 Forecast"):
     st.download_button(
         "Download forecast CSV",
         fc_df[export_cols].to_csv(index=False).encode(),
-        "forecast.csv",
-        "text/csv",
+        file_name="forecast.csv",
+        mime="text/csv",
     )(
         "Download forecast CSV",
         fc_df[export_cols].to_csv(index=False).encode(),
+        "forecast.csv",
+        "text/csv",
+    ).encode(),
         "forecast.csv",
         "text/csv",
     )
